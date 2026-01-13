@@ -24,8 +24,8 @@ import Link from "next/link";
 import { useState } from "react";
 
 const formSchema = z.object({
-  email: z.email(),
-  password: z.string().min(1, { error: "Password is required" }),
+  email: z.string().email(),
+  password: z.string().min(1, { message: "Password is required" }),
 });
 
 export default function SignInView() {

@@ -121,7 +121,7 @@ export default function AgentForm({
             </Button>
           )}
           <Button disabled={isPending} type="submit">
-            {isEdit ? "Update" : "Craete"}
+            {isEdit ? "Update" : "Create"}
           </Button>
         </div>
       </form>
