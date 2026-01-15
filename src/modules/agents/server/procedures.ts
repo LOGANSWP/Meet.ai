@@ -7,7 +7,13 @@ import {
 } from "@/trpc/init";
 import { agentsInsertSchema } from "../schemas";
 import { z } from "zod";
-import { eq, getTableColumns, sql } from "drizzle-orm";
+import { and, count, desc, eq, getTableColumns, ilike, sql } from "drizzle-orm";
+import {
+  DEFAULT_PAGE,
+  DEFAULT_PAGE_SIZE,
+  MAX_PAGE_SIZE,
+  MIN_PAGE_SIZE,
+} from "@/constants";
 
 export const agentsRouter = createTRPCRouter({
   getOne: protectedProcedure
@@ -17,7 +23,7 @@ export const agentsRouter = createTRPCRouter({
         .select({
           //TODO: Change to actual count
           ...getTableColumns(agent),
-          //meetingCount: sql<number>`5`,
+          meetingCount: sql<number>`5`,
         })
         .from(agent)
         .where(eq(agent.id, input.id));
@@ -25,10 +31,55 @@ export const agentsRouter = createTRPCRouter({
       return existingAgent;
     }),
 
-  getMany: protectedProcedure.query(async () => {
-    const data = await db.select().from(agent);
-    return data;
-  }),
+  getMany: protectedProcedure
+    .input(
+      z.object({
+        page: z.number().default(DEFAULT_PAGE),
+        pageSize: z
+          .number()
+          .min(MIN_PAGE_SIZE)
+          .max(MAX_PAGE_SIZE)
+          .default(DEFAULT_PAGE_SIZE),
+        search: z.string().nullish(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const { search, page, pageSize } = input;
+
+      const data = await db
+        .select({
+          ...getTableColumns(agent),
+          meetingCount: sql<number>`5`,
+        })
+        .from(agent)
+        .where(
+          and(
+            eq(agent.userId, ctx.auth.user.id),
+            search ? ilike(agent.name, `%${search}%`) : undefined
+          )
+        )
+        .orderBy(desc(agent.createdAt), desc(agent.id))
+        .limit(pageSize)
+        .offset((page - 1) * pageSize);
+
+      const [total] = await db
+        .select({ count: count() })
+        .from(agent)
+        .where(
+          and(
+            eq(agent.userId, ctx.auth.user.id),
+            search ? ilike(agent.name, `%${search}%`) : undefined
+          )
+        );
+
+      const totalPage = Math.ceil(total.count / pageSize);
+
+      return {
+        items: data,
+        total: total.count,
+        totalPage,
+      };
+    }),
 
   create: protectedProcedure
     .input(agentsInsertSchema)
