@@ -14,11 +14,12 @@ import {
   MAX_PAGE_SIZE,
   MIN_PAGE_SIZE,
 } from "@/constants";
+import { TRPCError } from "@trpc/server";
 
 export const agentsRouter = createTRPCRouter({
   getOne: protectedProcedure
     .input(z.object({ id: z.string() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const [existingAgent] = await db
         .select({
           //TODO: Change to actual count
@@ -26,7 +27,11 @@ export const agentsRouter = createTRPCRouter({
           meetingCount: sql<number>`5`,
         })
         .from(agent)
-        .where(eq(agent.id, input.id));
+        .where(and(eq(agent.id, input.id), eq(agent.userId, ctx.auth.user.id)));
+
+      if (!existingAgent) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Agent not found" });
+      }
 
       return existingAgent;
     }),
