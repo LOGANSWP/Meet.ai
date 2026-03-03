@@ -18,6 +18,26 @@ import { meetingsInsertSchema, meetingsUpdateSchema } from "../schemas";
 import { MeetingStatus } from "../types";
 
 export const meetingsRouter = createTRPCRouter({
+  remove: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const [removedMeeting] = await db
+        .delete(meeting)
+        .where(
+          and(eq(meeting.id, input.id), eq(meeting.userId, ctx.auth.user.id)),
+        )
+        .returning();
+
+      if (!removedMeeting) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Meeting not found",
+        });
+      }
+
+      return removedMeeting;
+    }),
+
   update: protectedProcedure
     .input(meetingsUpdateSchema)
     .mutation(async ({ ctx, input }) => {
@@ -25,7 +45,7 @@ export const meetingsRouter = createTRPCRouter({
         .update(meeting)
         .set(input)
         .where(
-          and(eq(meeting.id, input.id), eq(meeting.userId, ctx.auth.user.id))
+          and(eq(meeting.id, input.id), eq(meeting.userId, ctx.auth.user.id)),
         )
         .returning();
 
@@ -61,10 +81,15 @@ export const meetingsRouter = createTRPCRouter({
       const [existingMeeting] = await db
         .select({
           ...getTableColumns(meeting),
+          agent: agent,
+          duration: sql<number>`EXTRACT(EPOCH FROM (ended_at - started_at))`.as(
+            "duration",
+          ),
         })
         .from(meeting)
+        .innerJoin(agent, eq(meeting.agentId, agent.id))
         .where(
-          and(eq(meeting.id, input.id), eq(meeting.userId, ctx.auth.user.id))
+          and(eq(meeting.id, input.id), eq(meeting.userId, ctx.auth.user.id)),
         );
 
       if (!existingMeeting) {
@@ -97,7 +122,7 @@ export const meetingsRouter = createTRPCRouter({
             MeetingStatus.Cancelled,
           ])
           .nullish(),
-      })
+      }),
     )
     .query(async ({ ctx, input }) => {
       const { search, page, pageSize, status, agentId } = input;
@@ -107,7 +132,7 @@ export const meetingsRouter = createTRPCRouter({
           ...getTableColumns(meeting),
           agent: agent,
           duration: sql<number>`EXTRACT(EPOCH FROM (ended_at - started_at))`.as(
-            "duration"
+            "duration",
           ),
         })
         .from(meeting)
@@ -117,8 +142,8 @@ export const meetingsRouter = createTRPCRouter({
             eq(meeting.userId, ctx.auth.user.id),
             search ? ilike(meeting.name, `%${search}%`) : undefined,
             status ? eq(meeting.status, status) : undefined,
-            agentId ? eq(meeting.agentId, agentId) : undefined
-          )
+            agentId ? eq(meeting.agentId, agentId) : undefined,
+          ),
         )
         .orderBy(desc(meeting.createdAt), desc(meeting.id))
         .limit(pageSize)
@@ -132,8 +157,8 @@ export const meetingsRouter = createTRPCRouter({
             eq(meeting.userId, ctx.auth.user.id),
             search ? ilike(meeting.name, `%${search}%`) : undefined,
             status ? eq(meeting.status, status) : undefined,
-            agentId ? eq(meeting.agentId, agentId) : undefined
-          )
+            agentId ? eq(meeting.agentId, agentId) : undefined,
+          ),
         );
 
       const totalPage = Math.ceil(total.count / pageSize);
